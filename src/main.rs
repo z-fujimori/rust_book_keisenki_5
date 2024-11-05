@@ -1,7 +1,7 @@
-use std::io::stdin;
+use std::{collections::{hash_map::Entry, HashMap}, io::stdin};
 fn main() {
-    // let mut memory = 0.0;
-    let mut memories = vec![0.0; 10];
+    let mut memory = Memory::new();
+    // let mut memories = vec![0.0; 10];
     let mut prev_result = 0.0;
     for line in stdin().lines(){
         let line = line.unwrap();
@@ -11,7 +11,6 @@ fn main() {
         }
         // 空白で分割
         let tokens: Vec<&str> = line.split(char::is_whitespace).collect();
-        
         // if tokens[0] == "mem+" {
         //     add_and_print_memory(&mut memory, prev_result);
         //     continue;
@@ -21,35 +20,53 @@ fn main() {
         // }
         let is_memory = tokens[0].starts_with("mem");
         if is_memory && tokens[0].ends_with("+"){
-            add_and_print_memory(&mut memories, tokens[0], prev_result);
+            memory.add_and_print(tokens[0], prev_result);
             continue;
         } else if is_memory && tokens[0].ends_with("-") {
-            subtract_and_print_memory(&mut memories, tokens[0], prev_result);
+            memory.add_and_print(tokens[0], -prev_result);
             continue;
         }
-
-        // mem導入により変更　
-        // let left: f64 = tokens[0].parse().unwrap();
-        // let right: f64 = tokens[2].parse().unwrap();
-        let left = eval_token(tokens[0], &memories[..]);
-        let right = eval_token(tokens[2], &memories[..]);
-
+        let left = memory.eval_token(tokens[0]);
+        let right = memory.eval_token(tokens[2]);
         let result = eval_expression(left, tokens[1], right);
         print_output(result);
         prev_result = result;
     }
 }
 
-fn eval_token(token: &str, memories: &[f64]) -> f64 {
-    // ifとelseの返り値は同じでなければいけないというrustの制約から、
-    // 変数memoryの型から推論が効くようになるため let right: f64 と書かなくてもよい
-    if token.starts_with("mem") {
-        let solt_index: usize = token[3..].parse().unwrap();
-        memories[solt_index]
-    } else {
-        token.parse().unwrap()
+struct  Memory {
+    slots: HashMap<String, f64>,
+}
+// Memory構造体にメソッドを定義
+impl Memory {
+    fn new() -> Self {
+        Self {
+            slots: HashMap::new(),
+        }
+    }
+    fn add_and_print(&mut self, token: &str, prev_result: f64){
+        let slot_name = token[3..token.len() - 1].to_string();
+        match self.slots.entry(slot_name) {
+            Entry::Occupied(mut entry) => {
+                *entry.get_mut() += prev_result;
+                print_output(*entry.get());
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(prev_result);
+                print_output(prev_result);
+            }
+        }
+    }
+    fn eval_token(&self, token: &str) -> f64 {
+        if token.starts_with("mem") {
+            let solt_name = &token[3..];
+            self.slots.get(solt_name).copied().unwrap_or(0.0)
+        } else {
+            token.parse().unwrap()
+        }
     }
 }
+
 fn eval_expression(left: f64, operator: &str, right: f64) -> f64 {
     match  operator {
         "+" => left + right,
@@ -62,28 +79,57 @@ fn eval_expression(left: f64, operator: &str, right: f64) -> f64 {
         }
     }
 }
-fn add_and_print_memory(
-    memories: &mut [f64],
-    token: &str,
-    prev_result: f64
-){
-    let slot_index: usize = token[3..token.len() -1].parse().unwrap();
-    memories[slot_index] += prev_result;
-    print_output(memories[slot_index]);
-}
-fn subtract_and_print_memory(
-    memories: &mut [f64],
-    token: &str,
-    prev_result: f64
-){
-    let slot_index: usize = token[3..token.len() -1].parse().unwrap();
-    memories[slot_index] -= prev_result;
-    print_output(memories[slot_index]);
-}
-// デバックようなのか出力なのかがわかるため有用
 fn print_output(value: f64){
     println!(" => {}", value);
 }
+// fn eval_token(token: &str, memory: &Memory) -> f64 {
+//     // ifとelseの返り値は同じでなければいけないというrustの制約から、
+//     // 変数memoryの型から推論が効くようになるため let right: f64 と書かなくてもよい
+//     if token.starts_with("mem") {
+//         let solt_name = &token[3..];
+//         for slot in &memory.slots{
+//             if slot.0 == solt_name {
+//                 return slot.1;
+//             }
+//         }
+//         0.0
+//     } else {
+//         token.parse().unwrap()
+//     }
+// }
+// fn add_and_print_memory(
+//     memory: &mut Memory,
+//     token: &str,
+//     prev_result: f64
+// ){
+//     let slot_name = &token[3..token.len() -1];
+//     for slot in memory.slots.iter_mut(){
+//         if slot.0 == slot_name {
+//             slot.1 += prev_result;
+//             print_output(slot.1);
+//             return;
+//         }
+//     }
+//     memory.slots.push((slot_name.to_string(), prev_result));
+//     print_output(prev_result);
+// }
+// fn subtract_and_print_memory(
+//     memory: &mut Memory,
+//     token: &str,
+//     prev_result: f64
+// ){
+//     let slot_name = &token[3..token.len() -1];
+//     for slot in memory.slots.iter_mut(){
+//         if slot.0 == slot_name {
+//             slot.1 += prev_result;
+//             print_output(slot.1);
+//             return;
+//         }
+//     }
+//     memory.slots.push((slot_name.to_string(), prev_result));
+//     print_output(prev_result);
+// }
+// デバックようなのか出力なのかがわかるため有用
 // 以下のような処理は関数に分けると読みにくくなってしまう。
 // fn add_value(left: f64, right: f64) -> f64 {
 //     left + right
