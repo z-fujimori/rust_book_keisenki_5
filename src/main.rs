@@ -10,27 +10,26 @@ fn main() {
             break;
         }
         // 空白で分割
-        let tokens: Vec<&str> = line.split(char::is_whitespace).collect();
-        // if tokens[0] == "mem+" {
-        //     add_and_print_memory(&mut memory, prev_result);
-        //     continue;
-        // } else if tokens[0] == "mem-" {
-        //     subtract_and_print_memory(&mut memory, prev_result);
-        //     continue;
-        // }
-        let is_memory = tokens[0].starts_with("mem");
-        if is_memory && tokens[0].ends_with("+"){
-            memory.add_and_print(tokens[0], prev_result);
-            continue;
-        } else if is_memory && tokens[0].ends_with("-") {
-            memory.add_and_print(tokens[0], -prev_result);
-            continue;
-        }
-        let left = memory.eval_token(tokens[0]);
-        let right = memory.eval_token(tokens[2]);
-        let result = eval_expression(left, tokens[1], right);
-        print_output(result);
-        prev_result = result;
+        let tokens = Token::split(&line);
+        match &tokens[0] {
+            Token::MemoryPlus(memory_name) => {
+                let memory_name = memory_name.to_string();
+                let result = memory.add(memory_name, prev_result);
+                print_output(result);
+            }
+            Token::MemoryMinus(memory_name) => {
+                let memory_name = memory_name.to_string();
+                let result = memory.add(memory_name, -prev_result);
+                print_output(result);
+            }
+            _ => {
+                // let left = eval_token(&tokens[0], &memory);
+                // let right = eval_token(&tokens[2], &memory);
+                let result = eval_expression( &tokens, &memory);
+            print_output(result);
+            prev_result = result;
+            }
+        };
     }
 }
 
@@ -44,104 +43,134 @@ impl Memory {
             slots: HashMap::new(),
         }
     }
-    fn add_and_print(&mut self, token: &str, prev_result: f64){
-        let slot_name = token[3..token.len() - 1].to_string();
+    fn add(&mut self, slot_name: String, prev_result: f64) -> f64 {
         match self.slots.entry(slot_name) {
             Entry::Occupied(mut entry) => {
                 *entry.get_mut() += prev_result;
-                print_output(*entry.get());
+                *entry.get()
             }
             Entry::Vacant(entry) => {
                 entry.insert(prev_result);
-                print_output(prev_result);
+                prev_result
             }
         }
     }
-    fn eval_token(&self, token: &str) -> f64 {
-        if token.starts_with("mem") {
-            let solt_name = &token[3..];
-            self.slots.get(solt_name).copied().unwrap_or(0.0)
-        } else {
-            token.parse().unwrap()
-        }
+    fn get(&self, slot_name: &str) -> f64 {
+        self.slots.get(slot_name).copied().unwrap_or(0.0)
     }
 }
 
-fn eval_expression(left: f64, operator: &str, right: f64) -> f64 {
-    match  operator {
-        "+" => left + right,
-        "-" => left - right,
-        "*" => left * right,
-        "/" => left / right,
+#[derive(Debug, PartialEq)]
+enum Token {
+    Number(f64),
+    MemoryRef(String),
+    MemoryPlus(String),
+    MemoryMinus(String),
+    Plus,
+    Minus,
+    Asterisk,
+    Slash,
+}
+impl Token {
+    fn parse(value: &str) -> Self {
+        match value {
+            "+" => Self::Plus,
+            "-" => Self::Minus,
+            "*" => Self::Asterisk,
+            "/" => Self::Slash,
+            _ if value.starts_with("mem") => {
+                let mut memory_name = value[3..].to_string();
+                if value.ends_with("+") {
+                    memory_name.pop();
+                    Self::MemoryPlus(memory_name)
+                } else if value.ends_with("-") {
+                    memory_name.pop();
+                    Self::MemoryMinus(memory_name)
+                } else {
+                    Self::MemoryRef(memory_name)
+                }
+            }
+            _ => Self::Number(value.parse().unwrap()),
+        }
+    }
+    fn split(text: &str) -> Vec<Self>{
+        text.split(char::is_whitespace)
+        .map(Self::parse)
+        .collect()
+    }
+}
+fn print_output (val: f64) {
+    println!(" => {}", val)
+}
+fn eval_token(token: &Token, memory: &Memory) -> f64 {
+    match token {
+        Token::Number(value) => {
+            *value
+        }
+        Token::MemoryRef(memory_name) => {
+            memory.get(memory_name)
+        }
         _ => {
-            // 到達不能マクロ
             unreachable!()
         }
     }
 }
-fn print_output(value: f64){
-    println!(" => {}", value);
+fn eval_expression(tokens: &[Token], memory: &Memory) -> f64 {
+    eval_additive_expression(tokens, memory)
+}    
+fn eval_additive_expression(tokens: &[Token], memory: &Memory) -> f64 {
+    let mut index = 0;
+    let mut result;
+    (result, index) = eval_multiplicative_expression(
+        tokens,
+        index,
+        memory,
+    );
+    while index < tokens.len() {
+        match &tokens[index] {
+            Token::Plus => {
+                let (value, next) = eval_multiplicative_expression(
+                    tokens,
+                    index + 1,
+                    memory,
+                );
+                result += value;
+                index = next;
+            }
+            Token::Minus => {
+                let (value, next) = eval_multiplicative_expression(
+                    tokens, 
+                    index + 1, 
+                    memory
+                );
+                result -= value;
+                index = next;
+            }
+            _ => break,
+        }
+    }
+    result
 }
-// fn eval_token(token: &str, memory: &Memory) -> f64 {
-//     // ifとelseの返り値は同じでなければいけないというrustの制約から、
-//     // 変数memoryの型から推論が効くようになるため let right: f64 と書かなくてもよい
-//     if token.starts_with("mem") {
-//         let solt_name = &token[3..];
-//         for slot in &memory.slots{
-//             if slot.0 == solt_name {
-//                 return slot.1;
-//             }
-//         }
-//         0.0
-//     } else {
-//         token.parse().unwrap()
-//     }
-// }
-// fn add_and_print_memory(
-//     memory: &mut Memory,
-//     token: &str,
-//     prev_result: f64
-// ){
-//     let slot_name = &token[3..token.len() -1];
-//     for slot in memory.slots.iter_mut(){
-//         if slot.0 == slot_name {
-//             slot.1 += prev_result;
-//             print_output(slot.1);
-//             return;
-//         }
-//     }
-//     memory.slots.push((slot_name.to_string(), prev_result));
-//     print_output(prev_result);
-// }
-// fn subtract_and_print_memory(
-//     memory: &mut Memory,
-//     token: &str,
-//     prev_result: f64
-// ){
-//     let slot_name = &token[3..token.len() -1];
-//     for slot in memory.slots.iter_mut(){
-//         if slot.0 == slot_name {
-//             slot.1 += prev_result;
-//             print_output(slot.1);
-//             return;
-//         }
-//     }
-//     memory.slots.push((slot_name.to_string(), prev_result));
-//     print_output(prev_result);
-// }
-// デバックようなのか出力なのかがわかるため有用
-// 以下のような処理は関数に分けると読みにくくなってしまう。
-// fn add_value(left: f64, right: f64) -> f64 {
-//     left + right
-// }
-// fn subtract_value(left: f64, right: f64) -> f64 {
-//     left - right
-// }
-// fn multiply_value(left: f64, right: f64) -> f64 {
-//     left * right
-// }
-// fn divide_value(left: f64, right: f64) -> f64 {
-//     left / right
-// }
-
-
+fn eval_multiplicative_expression(
+    tokens: &[Token],
+    index: usize,
+    memory: &Memory,
+) -> (f64, usize) {
+    let mut index = index;
+    let mut result = eval_token(&tokens[index], memory);
+    index += 1;
+    while index < tokens.len(){
+        match &tokens[index] {
+            Token::Asterisk => {
+                result *= eval_token(&tokens[index + 1], memory);
+                index += 2;
+            }
+            Token::Slash => {
+                result /= eval_token(&tokens[index + 1], memory);
+                index += 2;
+            }
+            _ => break,
+        }
+    }
+    (result, index)
+}
